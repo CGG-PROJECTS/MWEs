@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Excel Data Viewer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Excel Dashboard</h1>
+  
+  <h2>Sheet 1</h2>
+  <div id="table1" class="table-container"></div>
+
+  <h2>Sheet 2</h2>
+  <div id="table2" class="table-container"></div>
+
+  <div class="downloads">
+    <h3>Download Files</h3>
+    <a href="sheet1.xlsx" download>↓ Download sheet1.xlsx</a><br><br>
+    <a href="sheet2.xlsx" download>↓ Download sheet2.xlsx</a>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
