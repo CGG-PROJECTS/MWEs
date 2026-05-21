@@ -5,25 +5,24 @@ body {
 }
 
 h1 {
-  color: #333;
   text-align: center;
+  color: #333;
 }
 
 .tabs {
   display: flex;
   justify-content: center;
-  margin-bottom: 20px;
-  border-bottom: 2px solid #ccc;
+  margin: 20px 0;
 }
 
 .tab-button {
-  padding: 12px 30px;
-  font-size: 16px;
+  padding: 12px 40px;
+  font-size: 17px;
   cursor: pointer;
   background: #fff;
   border: 1px solid #ccc;
   border-bottom: none;
-  margin-right: 5px;
+  margin: 0 5px;
   border-radius: 8px 8px 0 0;
 }
 
@@ -34,39 +33,12 @@ h1 {
 }
 
 .table-container {
-  overflow-x: auto;           /* Horizontal scroll */
-  overflow-y: auto;           /* Vertical scroll */
-  max-height: 75vh;           /* Adjust height as needed */
-  border: 1px solid #ccc;
   background: white;
+  border: 1px solid #ccc;
   border-radius: 8px;
+  padding: 10px;
 }
 
-table {
-  border-collapse: collapse;
-  width: 100%;
-  min-width: 1200px;          /* Forces horizontal scroll if wide */
-}
-
-th, td {
-  border: 1px solid #ddd;
-  padding: 10px 12px;
-  text-align: left;
-  white-space: nowrap;        /* Keeps columns clean */
-}
-
-th {
-  background-color: #4a89dc;
-  color: white;
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
-tr:nth-child(even) {
-  background-color: #f9f9f9;
-}
-
-tr:hover {
-  background-color: #f0f8ff;
+.dataTables_wrapper {
+  margin-top: 10px;
 }
