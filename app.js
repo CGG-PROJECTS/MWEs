@@ -7,11 +7,29 @@ let rawData = {
 
 let vizChart = null;
 
-// Change this if you want fewer or more decimals.
+// Change this if you want fewer or more decimals in the displayed table.
 // 2 = 12.35
 // 1 = 12.3
 // 0 = 12
 const DECIMAL_PLACES = 2;
+
+// Age range filter settings for each table
+let ageFilterState = {
+  dataTable1: {
+    ageColumn: "",
+    minAge: "",
+    maxAge: "",
+    useRoundedAge: true
+  },
+  dataTable2: {
+    ageColumn: "",
+    minAge: "",
+    maxAge: "",
+    useRoundedAge: true
+  }
+};
+
+let ageRangeFilterRegistered = false;
 
 
 // -------------------------
@@ -48,9 +66,364 @@ function formatNumberForDisplay(value) {
 
   if (Number.isNaN(num)) return value;
 
-  // This rounds to the chosen number of decimal places
-  // and removes unnecessary trailing zeros.
   return Number(num.toFixed(DECIMAL_PLACES));
+}
+
+function roundAgeValue(value) {
+  const num = parseNumber(value);
+
+  if (Number.isNaN(num)) return NaN;
+
+  return Math.round(num);
+}
+
+
+// -------------------------
+// Data/table helpers
+// -------------------------
+
+function getTableById(tableId) {
+  if (tableId === "dataTable1") return table1;
+  if (tableId === "dataTable2") return table2;
+  return null;
+}
+
+function getAllColumns(data) {
+  if (!data || data.length === 0) return [];
+  return Object.keys(data[0]);
+}
+
+function getNumericColumns(data) {
+  const columns = getAllColumns(data);
+
+  return columns.filter(col => {
+    let numericCount = 0;
+    let checkedCount = 0;
+
+    for (const row of data.slice(0, 500)) {
+      const value = row[col];
+
+      if (value !== "" && value !== null && value !== undefined) {
+        checkedCount++;
+
+        if (!Number.isNaN(parseNumber(value))) {
+          numericCount++;
+        }
+      }
+    }
+
+    return checkedCount > 0 && numericCount / checkedCount > 0.7;
+  });
+}
+
+function getPreferredAgeColumn(numericColumns) {
+  if (!numericColumns || numericColumns.length === 0) return "";
+
+  return (
+    numericColumns.find(c => c.toLowerCase().includes("aoa")) ||
+    numericColumns.find(c => c.toLowerCase().includes("age")) ||
+    numericColumns.find(c => c.toLowerCase().includes("year")) ||
+    numericColumns[0]
+  );
+}
+
+
+// -------------------------
+// Age filter controls
+// -------------------------
+
+function createAgeFilterControls(tableId, jsonData) {
+  const tableElement = document.getElementById(tableId);
+
+  if (!tableElement) return;
+
+  const existingPanel = document.getElementById(`ageFilterPanel-${tableId}`);
+
+  if (existingPanel) {
+    existingPanel.remove();
+  }
+
+  const numericColumns = getNumericColumns(jsonData);
+  const preferredAgeColumn = getPreferredAgeColumn(numericColumns);
+
+  ageFilterState[tableId].ageColumn = preferredAgeColumn;
+  ageFilterState[tableId].minAge = "";
+  ageFilterState[tableId].maxAge = "";
+  ageFilterState[tableId].useRoundedAge = true;
+
+  const panel = document.createElement("div");
+  panel.className = "age-filter-panel";
+  panel.id = `ageFilterPanel-${tableId}`;
+
+  panel.innerHTML = `
+    <div class="age-filter-title">
+      Age / AoA filter
+    </div>
+
+    <div class="age-filter-controls">
+      <label>
+        Age/AoA column
+        <select id="ageColumn-${tableId}">
+          ${
+            numericColumns.length > 0
+              ? numericColumns.map(col => `
+                  <option value="${escapeHtml(col)}" ${col === preferredAgeColumn ? "selected" : ""}>
+                    ${escapeHtml(col)}
+                  </option>
+                `).join("")
+              : `<option value="">No numeric columns found</option>`
+          }
+        </select>
+      </label>
+
+      <label>
+        Min age
+        <input
+          type="number"
+          id="ageMin-${tableId}"
+          placeholder="e.g. 8"
+          step="1"
+        >
+      </label>
+
+      <label>
+        Max age
+        <input
+          type="number"
+          id="ageMax-${tableId}"
+          placeholder="e.g. 12"
+          step="1"
+        >
+      </label>
+
+      <label class="age-checkbox-label">
+        <input
+          type="checkbox"
+          id="ageRounded-${tableId}"
+          checked
+        >
+        Use rounded ages
+      </label>
+
+      <button type="button" id="applyAgeFilter-${tableId}">
+        Apply age filter
+      </button>
+
+      <button type="button" id="clearAgeFilter-${tableId}">
+        Clear
+      </button>
+
+      <button type="button" id="sortAgeAsc-${tableId}">
+        Sort age ↑
+      </button>
+
+      <button type="button" id="sortAgeDesc-${tableId}">
+        Sort age ↓
+      </button>
+    </div>
+
+    <div class="age-filter-help">
+      Example: enter min <strong>8</strong> and max <strong>12</strong> to show all items with AoA between 8–12 years.
+      If rounded ages is enabled, <strong>8.6</strong> is treated as <strong>9</strong>.
+    </div>
+
+    <div class="age-filter-status" id="ageFilterStatus-${tableId}">
+    </div>
+  `;
+
+  tableElement.parentNode.insertBefore(panel, tableElement);
+
+  if (numericColumns.length === 0) {
+    panel.querySelectorAll("input, button, select").forEach(el => {
+      el.disabled = true;
+    });
+  }
+}
+
+function setupAgeFilterEvents(tableId) {
+  const ageColumn = document.getElementById(`ageColumn-${tableId}`);
+  const ageMin = document.getElementById(`ageMin-${tableId}`);
+  const ageMax = document.getElementById(`ageMax-${tableId}`);
+  const ageRounded = document.getElementById(`ageRounded-${tableId}`);
+  const applyButton = document.getElementById(`applyAgeFilter-${tableId}`);
+  const clearButton = document.getElementById(`clearAgeFilter-${tableId}`);
+  const sortAscButton = document.getElementById(`sortAgeAsc-${tableId}`);
+  const sortDescButton = document.getElementById(`sortAgeDesc-${tableId}`);
+
+  if (!ageColumn || !ageMin || !ageMax || !ageRounded) return;
+
+  function updateStateFromControls() {
+    ageFilterState[tableId].ageColumn = ageColumn.value;
+    ageFilterState[tableId].minAge = ageMin.value;
+    ageFilterState[tableId].maxAge = ageMax.value;
+    ageFilterState[tableId].useRoundedAge = ageRounded.checked;
+  }
+
+  function redrawTable() {
+    const table = getTableById(tableId);
+
+    if (!table) return;
+
+    updateStateFromControls();
+
+    // Invalidate forces DataTables to re-check sort values,
+    // including rounded sort values for the selected age column.
+    table.rows().invalidate("data");
+    table.draw();
+    updateAgeFilterStatus(tableId);
+  }
+
+  ageColumn.addEventListener("change", redrawTable);
+  ageMin.addEventListener("input", redrawTable);
+  ageMax.addEventListener("input", redrawTable);
+  ageRounded.addEventListener("change", redrawTable);
+
+  if (applyButton) {
+    applyButton.addEventListener("click", redrawTable);
+  }
+
+  if (clearButton) {
+    clearButton.addEventListener("click", () => {
+      ageMin.value = "";
+      ageMax.value = "";
+      ageRounded.checked = true;
+
+      updateStateFromControls();
+
+      const table = getTableById(tableId);
+
+      if (table) {
+        table.rows().invalidate("data");
+        table.search("");
+        table.draw();
+      }
+
+      updateAgeFilterStatus(tableId);
+    });
+  }
+
+  if (sortAscButton) {
+    sortAscButton.addEventListener("click", () => {
+      sortBySelectedAgeColumn(tableId, "asc");
+    });
+  }
+
+  if (sortDescButton) {
+    sortDescButton.addEventListener("click", () => {
+      sortBySelectedAgeColumn(tableId, "desc");
+    });
+  }
+
+  updateStateFromControls();
+  updateAgeFilterStatus(tableId);
+}
+
+function sortBySelectedAgeColumn(tableId, direction) {
+  const table = getTableById(tableId);
+  const state = ageFilterState[tableId];
+
+  if (!table || !state || !state.ageColumn) return;
+
+  const columns = table.settings().init().columns || [];
+  const columnIndex = columns.findIndex(col => col.data === state.ageColumn);
+
+  if (columnIndex === -1) return;
+
+  table.rows().invalidate("data");
+  table.order([columnIndex, direction]).draw();
+
+  updateAgeFilterStatus(tableId);
+}
+
+function registerAgeRangeFilter() {
+  if (ageRangeFilterRegistered) return;
+
+  $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+    const tableId = settings.nTable.id;
+
+    if (tableId !== "dataTable1" && tableId !== "dataTable2") {
+      return true;
+    }
+
+    const state = ageFilterState[tableId];
+
+    if (!state || !state.ageColumn) {
+      return true;
+    }
+
+    const minAge = state.minAge === "" ? null : Number(state.minAge);
+    const maxAge = state.maxAge === "" ? null : Number(state.maxAge);
+
+    // If both are empty, do not filter by age.
+    if (minAge === null && maxAge === null) {
+      return true;
+    }
+
+    const tableApi = new $.fn.dataTable.Api(settings);
+    const rowData = tableApi.row(dataIndex).data();
+
+    if (!rowData) return true;
+
+    let ageValue = parseNumber(rowData[state.ageColumn]);
+
+    if (Number.isNaN(ageValue)) {
+      return false;
+    }
+
+    if (state.useRoundedAge) {
+      ageValue = Math.round(ageValue);
+    }
+
+    if (minAge !== null && ageValue < minAge) {
+      return false;
+    }
+
+    if (maxAge !== null && ageValue > maxAge) {
+      return false;
+    }
+
+    return true;
+  });
+
+  ageRangeFilterRegistered = true;
+}
+
+function updateAgeFilterStatus(tableId) {
+  const status = document.getElementById(`ageFilterStatus-${tableId}`);
+  const table = getTableById(tableId);
+  const state = ageFilterState[tableId];
+
+  if (!status || !table || !state) return;
+
+  const visibleRows = table.rows({ filter: "applied" }).count();
+  const totalRows = table.rows().count();
+
+  const minText = state.minAge === "" ? "no min" : state.minAge;
+  const maxText = state.maxAge === "" ? "no max" : state.maxAge;
+  const roundedText = state.useRoundedAge ? "rounded to nearest year" : "exact decimals";
+
+  if (state.minAge === "" && state.maxAge === "") {
+    status.innerHTML = `
+      Showing <strong>${visibleRows}</strong> of <strong>${totalRows}</strong> rows.
+      No age range filter active.
+    `;
+  } else {
+    status.innerHTML = `
+      Showing <strong>${visibleRows}</strong> of <strong>${totalRows}</strong> rows.
+      Age filter on <strong>${escapeHtml(state.ageColumn)}</strong>:
+      <strong>${minText}</strong> to <strong>${maxText}</strong>
+      using <strong>${roundedText}</strong>.
+    `;
+  }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 
@@ -86,25 +459,39 @@ async function loadExcel(filename, tableId) {
       return;
     }
 
-    // Save original data for visualisations
+    // Save original data for visualisations.
     if (tableId === "dataTable1") {
       rawData.sheet1 = jsonData;
     } else {
       rawData.sheet2 = jsonData;
     }
 
+    createAgeFilterControls(tableId, jsonData);
+
     const columns = Object.keys(jsonData[0]).map(key => ({
       title: key,
       data: key,
 
       // This controls how values appear in the table.
-      // Numeric values are rounded for display,
-      // but still sort numerically.
+      // Numeric values are rounded for display.
+      // Sorting remains numeric.
+      // If this is the selected age/AoA column and "Use rounded ages" is checked,
+      // the sort also uses nearest-year rounded values.
       render: function (data, type, row) {
         if (isNumericValue(data)) {
           const num = parseNumber(data);
 
           if (type === "sort" || type === "type") {
+            const state = ageFilterState[tableId];
+
+            if (
+              state &&
+              state.useRoundedAge &&
+              state.ageColumn === key
+            ) {
+              return Math.round(num);
+            }
+
             return num;
           }
 
@@ -135,6 +522,12 @@ async function loadExcel(filename, tableId) {
         order: []
       });
 
+      table1.on("draw", () => {
+        updateAgeFilterStatus("dataTable1");
+      });
+
+      setupAgeFilterEvents("dataTable1");
+
       console.log(`Loaded ${filename} into dataTable1`);
     } else {
       if (table2) {
@@ -151,6 +544,12 @@ async function loadExcel(filename, tableId) {
         scrollCollapse: true,
         order: []
       });
+
+      table2.on("draw", () => {
+        updateAgeFilterStatus("dataTable2");
+      });
+
+      setupAgeFilterEvents("dataTable2");
 
       console.log(`Loaded ${filename} into dataTable2`);
     }
@@ -189,10 +588,12 @@ function openTab(tabIndex) {
   setTimeout(() => {
     if (tabIndex === 0 && table1) {
       table1.columns.adjust().draw(false);
+      updateAgeFilterStatus("dataTable1");
     }
 
     if (tabIndex === 1 && table2) {
       table2.columns.adjust().draw(false);
+      updateAgeFilterStatus("dataTable2");
     }
 
     if (tabIndex === 2) {
@@ -205,34 +606,6 @@ function openTab(tabIndex) {
 // -------------------------
 // Visualisation helpers
 // -------------------------
-
-function getAllColumns(data) {
-  if (!data || data.length === 0) return [];
-  return Object.keys(data[0]);
-}
-
-function getNumericColumns(data) {
-  const columns = getAllColumns(data);
-
-  return columns.filter(col => {
-    let numericCount = 0;
-    let checkedCount = 0;
-
-    for (const row of data.slice(0, 500)) {
-      const value = row[col];
-
-      if (value !== "" && value !== null && value !== undefined) {
-        checkedCount++;
-
-        if (!Number.isNaN(parseNumber(value))) {
-          numericCount++;
-        }
-      }
-    }
-
-    return checkedCount > 0 && numericCount / checkedCount > 0.7;
-  });
-}
 
 function setSelectOptions(selectId, options, preferredValue = null) {
   const select = document.getElementById(selectId);
@@ -284,15 +657,15 @@ function updateVisualizationControls() {
 }
 
 function makeHistogram(values, binCount = 20) {
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-
   if (values.length === 0) {
     return {
       labels: [],
       counts: []
     };
   }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
 
   if (min === max) {
     return {
@@ -576,6 +949,8 @@ function setupVisualizationEvents() {
 
 window.onload = async () => {
   openTab(0);
+
+  registerAgeRangeFilter();
 
   await loadExcel("sheet1.xlsx", "dataTable1");
   await loadExcel("sheet2.xlsx", "dataTable2");
