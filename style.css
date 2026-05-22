@@ -228,3 +228,82 @@ h1 {
   color: #7c2d12;
   line-height: 1.5;
 }
+/* ------------------------- */
+/* Compact data key summary  */
+/* ------------------------- */
+
+.data-key-summary {
+  background: white;
+  padding: 18px 22px;
+  border-radius: 8px;
+  margin: 30px 0;
+  border: 1px solid #ddd;
+  border-left: 5px solid #4a89dc;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.data-key-summary h2 {
+  margin-top: 0;
+  font-size: 21px;
+  color: #333;
+}
+
+.data-key-summary h3 {
+  margin-top: 18px;
+  margin-bottom: 8px;
+  font-size: 16px;
+  color: #333;
+}
+
+.compact-key-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0 16px 0;
+  font-size: 13px;
+}
+
+.compact-key-table th {
+  background: #e8f0fb;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+}
+
+.compact-key-table td {
+  padding: 7px 10px;
+  border: 1px solid #ddd;
+  vertical-align: top;
+}
+
+.compact-key-table code {
+  background: #f4f4f4;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 12.5px;
+}
+
+.compact-variable-list {
+  margin-top: 8px;
+  padding-left: 22px;
+  font-size: 13.5px;
+}
+
+.compact-variable-list li {
+  margin-bottom: 7px;
+}
+
+.compact-references {
+  padding-left: 22px;
+  font-size: 13px;
+}
+
+.compact-references li {
+  margin-bottom: 8px;
+}
+
+.compact-references a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
