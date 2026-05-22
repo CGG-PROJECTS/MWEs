@@ -1,11 +1,10 @@
 // =============================================
-// Complete app.js - Filter only on Apply Button
+// Complete app.js - Improved Version
 // =============================================
 
 let table1, table2;
 let rawData = { sheet1: [], sheet2: [] };
 let vizChart = null;
-
 const DECIMAL_PLACES = 2;
 
 let ageFilterState = {
@@ -54,7 +53,9 @@ function getTableById(tableId) {
   return tableId === "dataTable1" ? table1 : tableId === "dataTable2" ? table2 : null;
 }
 
-function getAllColumns(data) { return data?.length ? Object.keys(data[0]) : []; }
+function getAllColumns(data) { 
+  return data?.length ? Object.keys(data[0]) : []; 
+}
 
 function getNumericColumns(data) {
   const columns = getAllColumns(data);
@@ -72,8 +73,8 @@ function getNumericColumns(data) {
 
 function getPreferredAgeColumn(cols) {
   if (!cols.length) return "";
-  return cols.find(c => /aoa/i.test(c)) || 
-         cols.find(c => /age/i.test(c)) || 
+  return cols.find(c => /aoa/i.test(c)) ||
+         cols.find(c => /age/i.test(c)) ||
          cols.find(c => /year/i.test(c)) || cols[0];
 }
 
@@ -94,7 +95,6 @@ function createAgeFilterControls(tableId, jsonData) {
   const panel = document.createElement("div");
   panel.className = "age-filter-panel";
   panel.id = `ageFilterPanel-${tableId}`;
-
   panel.innerHTML = `
     <div class="age-filter-title">Age / AoA Filter</div>
     <div class="age-filter-controls">
@@ -166,11 +166,9 @@ function setupAgeFilterEvents(tableId) {
     updateAgeFilterStatus(tableId);
   }
 
-  // Events
   column.addEventListener("change", applyFilter);
   rounded.addEventListener("change", applyFilter);
   applyBtn?.addEventListener("click", applyFilter);
-
   clearBtn?.addEventListener("click", () => {
     minInput.value = "";
     maxInput.value = "";
@@ -201,7 +199,6 @@ function sortBySelectedAgeColumn(tableId, direction) {
   const idx = cols.findIndex(c => c.data === state.ageColumn);
   if (idx === -1) return;
 
-  table.rows().invalidate("data");
   table.order([idx, direction]).draw();
   updateAgeFilterStatus(tableId);
 }
@@ -228,6 +225,7 @@ function registerAgeRangeFilter() {
 
     if (min !== null && age < min) return false;
     if (max !== null && age > max) return false;
+
     return true;
   });
 
@@ -251,16 +249,19 @@ function updateAgeFilterStatus(tableId) {
 }
 
 // -------------------------
-// Load Excel + Rest of the code (Visualization remains same)
+// Load Excel
 // -------------------------
 async function loadExcel(filename, tableId) {
   try {
+    console.log(`Loading ${filename}...`);
     const res = await fetch(filename);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const wb = XLSX.read(await res.arrayBuffer(), { type: "array" });
+    if (!res.ok) throw new Error(`HTTP ${res.status} - ${res.statusText}`);
+
+    const arrayBuffer = await res.arrayBuffer();
+    const wb = XLSX.read(arrayBuffer, { type: "array" });
     const jsonData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
 
-    if (jsonData.length === 0) return;
+    if (jsonData.length === 0) throw new Error("Sheet is empty");
 
     if (tableId === "dataTable1") rawData.sheet1 = jsonData;
     else rawData.sheet2 = jsonData;
@@ -305,22 +306,66 @@ async function loadExcel(filename, tableId) {
       table2.on("draw", () => updateAgeFilterStatus("dataTable2"));
       setupAgeFilterEvents("dataTable2");
     }
+
+    console.log(`✅ ${filename} loaded successfully (${jsonData.length} rows)`);
+    return jsonData;
+
   } catch (e) {
-    console.error(e);
-    alert("Error loading " + filename);
+    console.error(`Failed to load ${filename}:`, e);
+    throw e;
   }
 }
 
-// Tab and Visualization functions (same as before)
-function openTab(tabIndex) { /* ... keep your original openTab or use previous version */ }
-// Paste your original visualization functions here (renderVisualization, setupVisualizationEvents, etc.)
+// -------------------------
+// Tab Handling
+// -------------------------
+function openTab(tabIndex) {
+  document.querySelectorAll(".tab-button").forEach((btn, i) => {
+    btn.classList.toggle("active", i === tabIndex);
+  });
 
+  document.getElementById("tab0").style.display = tabIndex === 0 ? "block" : "none";
+  document.getElementById("tab1").style.display = tabIndex === 1 ? "block" : "none";
+
+  // Redraw DataTable when switching to hidden tab
+  setTimeout(() => {
+    if (tabIndex === 1 && table2) {
+      table2.draw();
+    }
+  }, 100);
+}
+
+// -------------------------
+// Initialization
+// -------------------------
 window.onload = async () => {
+  const baseUrl = "https://raw.githubusercontent.com/cgg-projects/MWEs/main/";
+
   registerAgeRangeFilter();
   openTab(0);
-  await loadExcel("sheet1.xlsx", "dataTable1");
-  await loadExcel("sheet2.xlsx", "dataTable2");
-  setupVisualizationEvents();
-  updateVisualizationControls();
-  openTab(0);
+
+  try {
+    await loadExcel(baseUrl + "sheet1.xlsx", "dataTable1");
+  } catch (e) {
+    console.error("Sheet 1 failed to load", e);
+  }
+
+  // Load Sheet 2 (non-blocking)
+  loadExcel(baseUrl + "sheet2.xlsx", "dataTable2")
+    .then(() => {
+      console.log("✅ Sheet 2 loaded");
+    })
+    .catch(err => {
+      console.error("Sheet 2 failed", err);
+      const errorDiv = document.createElement("div");
+      errorDiv.style.cssText = "color: #d32f2f; background: #ffebee; padding: 15px; margin: 20px; border-radius: 8px; border-left: 5px solid #d32f2f;";
+      errorDiv.innerHTML = `<strong>⚠️ Sheet 2 failed to load</strong><br>${err.message}<br><small>Check browser console (F12) for more details.</small>`;
+      document.getElementById("tab1").prepend(errorDiv);
+    });
+
+  // Optional: Call your visualization functions here if you have them
+  // setupVisualizationEvents();
+  // updateVisualizationControls();
+
+  openTab(0); // Ensure first tab is active
 };
