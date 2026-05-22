@@ -1,5 +1,4 @@
-let table1 = null;
-let table2 = null;
+let table1, table2;
 
 let rawData = {
   sheet1: [],
@@ -8,29 +7,13 @@ let rawData = {
 
 let vizChart = null;
 
-// Change this for table display rounding.
+// Change this if you want fewer or more decimals in the displayed table.
 // 2 = 12.35
 // 1 = 12.3
 // 0 = 12
 const DECIMAL_PLACES = 2;
 
-// If you want fixed names instead of the Excel sheet names,
-// change displayName below.
-// For example:
-// dataTable2: { filename: "sheet2.xlsx", rawKey: "sheet2", displayName: "My Original Sheet 2 Name" }
-const FILE_CONFIG = {
-  dataTable1: {
-    filename: "sheet1.xlsx",
-    rawKey: "sheet1",
-    displayName: "Sheet 1"
-  },
-  dataTable2: {
-    filename: "sheet2.xlsx",
-    rawKey: "sheet2",
-    displayName: "Sheet 2"
-  }
-};
-
+// Age range filter settings for each table
 let ageFilterState = {
   dataTable1: {
     ageColumn: "",
@@ -53,6 +36,16 @@ let ageRangeFilterRegistered = false;
 // Number formatting helpers
 // -------------------------
 
+function isNumericValue(value) {
+  if (value === null || value === undefined || value === "") return false;
+
+  const cleaned = String(value)
+    .replace(/,/g, "")
+    .trim();
+
+  return cleaned !== "" && !Number.isNaN(Number(cleaned));
+}
+
 function parseNumber(value) {
   if (value === null || value === undefined || value === "") return NaN;
 
@@ -61,39 +54,32 @@ function parseNumber(value) {
     .replace(/[^\d.-]/g, "")
     .trim();
 
-  if (cleaned === "" || cleaned === "-" || cleaned === "." || cleaned === "-.") {
-    return NaN;
-  }
+  if (cleaned === "") return NaN;
 
   return Number(cleaned);
-}
-
-function isNumericValue(value) {
-  return !Number.isNaN(parseNumber(value));
 }
 
 function formatNumberForDisplay(value) {
   if (!isNumericValue(value)) return value;
 
-  const num = parseNumber(value);
+  const num = Number(String(value).replace(/,/g, "").trim());
 
   if (Number.isNaN(num)) return value;
 
   return Number(num.toFixed(DECIMAL_PLACES));
 }
 
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+function roundAgeValue(value) {
+  const num = parseNumber(value);
+
+  if (Number.isNaN(num)) return NaN;
+
+  return Math.round(num);
 }
 
 
 // -------------------------
-// General table helpers
+// Data/table helpers
 // -------------------------
 
 function getTableById(tableId) {
@@ -141,35 +127,9 @@ function getPreferredAgeColumn(numericColumns) {
   );
 }
 
-function updateSheetLabels(tableId, excelSheetName) {
-  const config = FILE_CONFIG[tableId];
-
-  let label = config.displayName || excelSheetName || tableId;
-
-  // If the display name is generic, use the Excel sheet name where possible.
-  if (
-    excelSheetName &&
-    config.displayName &&
-    ["Sheet 1", "Sheet 2", "sheet1", "sheet2"].includes(config.displayName)
-  ) {
-    label = excelSheetName;
-  }
-
-  const titleEl = document.getElementById(`tableTitle-${tableId}`);
-  const tabButtonEl = document.getElementById(`tabButton-${tableId}`);
-
-  if (titleEl) {
-    titleEl.textContent = label;
-  }
-
-  if (tabButtonEl) {
-    tabButtonEl.textContent = label;
-  }
-}
-
 
 // -------------------------
-// Age / AoA filter controls
+// Age filter controls
 // -------------------------
 
 function createAgeFilterControls(tableId, jsonData) {
@@ -195,52 +155,80 @@ function createAgeFilterControls(tableId, jsonData) {
   panel.className = "age-filter-panel";
   panel.id = `ageFilterPanel-${tableId}`;
 
-  const optionsHtml = numericColumns.length > 0
-    ? numericColumns.map(col => {
-      const selected = col === preferredAgeColumn ? "selected" : "";
-      return `<option value="${escapeHtml(col)}" ${selected}>${escapeHtml(col)}</option>`;
-    }).join("")
-    : `<option value="">No numeric columns found</option>`;
-
   panel.innerHTML = `
-    <div class="age-filter-title">Age / AoA filter</div>
+    <div class="age-filter-title">
+      Age / AoA filter
+    </div>
 
     <div class="age-filter-controls">
       <label>
         Age/AoA column
         <select id="ageColumn-${tableId}">
-          ${optionsHtml}
+          ${
+            numericColumns.length > 0
+              ? numericColumns.map(col => `
+                  <option value="${escapeHtml(col)}" ${col === preferredAgeColumn ? "selected" : ""}>
+                    ${escapeHtml(col)}
+                  </option>
+                `).join("")
+              : `<option value="">No numeric columns found</option>`
+          }
         </select>
       </label>
 
       <label>
         Min age
-        <input id="ageMin-${tableId}" type="number" step="0.1" placeholder="e.g. 8">
+        <input
+          type="number"
+          id="ageMin-${tableId}"
+          placeholder="e.g. 8"
+          step="1"
+        >
       </label>
 
       <label>
         Max age
-        <input id="ageMax-${tableId}" type="number" step="0.1" placeholder="e.g. 12">
+        <input
+          type="number"
+          id="ageMax-${tableId}"
+          placeholder="e.g. 12"
+          step="1"
+        >
       </label>
 
       <label class="age-checkbox-label">
-        <input id="ageRounded-${tableId}" type="checkbox" checked>
+        <input
+          type="checkbox"
+          id="ageRounded-${tableId}"
+          checked
+        >
         Use rounded ages
       </label>
 
-      <button id="applyAgeFilter-${tableId}" type="button">Apply age filter</button>
-      <button id="clearAgeFilter-${tableId}" type="button">Clear age filter</button>
-      <button id="sortAgeAsc-${tableId}" type="button">Sort age ↑</button>
-      <button id="sortAgeDesc-${tableId}" type="button">Sort age ↓</button>
+      <button type="button" id="applyAgeFilter-${tableId}">
+        Apply age filter
+      </button>
+
+      <button type="button" id="clearAgeFilter-${tableId}">
+        Clear
+      </button>
+
+      <button type="button" id="sortAgeAsc-${tableId}">
+        Sort age ↑
+      </button>
+
+      <button type="button" id="sortAgeDesc-${tableId}">
+        Sort age ↓
+      </button>
     </div>
 
     <div class="age-filter-help">
-      Example: min <strong>8</strong> and max <strong>12</strong> shows AoA values between 8–12.
-      If rounded ages is enabled, 8.6 is treated as 9.
-      This filter now updates only when you press <strong>Apply</strong> or press <strong>Enter</strong>, so typing should not freeze.
+      Example: enter min <strong>8</strong> and max <strong>12</strong> to show all items with AoA between 8–12 years.
+      If rounded ages is enabled, <strong>8.6</strong> is treated as <strong>9</strong>.
     </div>
 
-    <div id="ageFilterStatus-${tableId}" class="age-filter-status"></div>
+    <div class="age-filter-status" id="ageFilterStatus-${tableId}">
+    </div>
   `;
 
   tableElement.parentNode.insertBefore(panel, tableElement);
@@ -271,58 +259,47 @@ function setupAgeFilterEvents(tableId) {
     ageFilterState[tableId].useRoundedAge = ageRounded.checked;
   }
 
-  function applyAgeFilter() {
+  function redrawTable() {
     const table = getTableById(tableId);
 
     if (!table) return;
 
     updateStateFromControls();
 
-    // Only redraw when Apply is pressed.
-    // This avoids freezing while typing.
+    // Invalidate forces DataTables to re-check sort values,
+    // including rounded sort values for the selected age column.
     table.rows().invalidate("data");
     table.draw();
-
     updateAgeFilterStatus(tableId);
   }
 
-  function clearAgeFilter() {
-    const table = getTableById(tableId);
-
-    ageMin.value = "";
-    ageMax.value = "";
-    ageRounded.checked = true;
-
-    updateStateFromControls();
-
-    if (table) {
-      table.rows().invalidate("data");
-      table.draw();
-    }
-
-    updateAgeFilterStatus(tableId);
-  }
-
-  function applyOnEnter(event) {
-    if (event.key === "Enter") {
-      applyAgeFilter();
-    }
-  }
-
-  // Do NOT redraw on every keystroke.
-  // Only update when Apply is clicked, Enter is pressed, column changes, or rounded checkbox changes.
-  ageMin.addEventListener("keydown", applyOnEnter);
-  ageMax.addEventListener("keydown", applyOnEnter);
-
-  ageColumn.addEventListener("change", applyAgeFilter);
-  ageRounded.addEventListener("change", applyAgeFilter);
+  ageColumn.addEventListener("change", redrawTable);
+  ageMin.addEventListener("input", redrawTable);
+  ageMax.addEventListener("input", redrawTable);
+  ageRounded.addEventListener("change", redrawTable);
 
   if (applyButton) {
-    applyButton.addEventListener("click", applyAgeFilter);
+    applyButton.addEventListener("click", redrawTable);
   }
 
   if (clearButton) {
-    clearButton.addEventListener("click", clearAgeFilter);
+    clearButton.addEventListener("click", () => {
+      ageMin.value = "";
+      ageMax.value = "";
+      ageRounded.checked = true;
+
+      updateStateFromControls();
+
+      const table = getTableById(tableId);
+
+      if (table) {
+        table.rows().invalidate("data");
+        table.search("");
+        table.draw();
+      }
+
+      updateAgeFilterStatus(tableId);
+    });
   }
 
   if (sortAscButton) {
@@ -374,14 +351,11 @@ function registerAgeRangeFilter() {
       return true;
     }
 
-    const minAge = state.minAge === "" ? null : parseNumber(state.minAge);
-    const maxAge = state.maxAge === "" ? null : parseNumber(state.maxAge);
+    const minAge = state.minAge === "" ? null : Number(state.minAge);
+    const maxAge = state.maxAge === "" ? null : Number(state.maxAge);
 
-    // If both are empty, do not filter.
-    if (
-      (minAge === null || Number.isNaN(minAge)) &&
-      (maxAge === null || Number.isNaN(maxAge))
-    ) {
+    // If both are empty, do not filter by age.
+    if (minAge === null && maxAge === null) {
       return true;
     }
 
@@ -400,11 +374,11 @@ function registerAgeRangeFilter() {
       ageValue = Math.round(ageValue);
     }
 
-    if (minAge !== null && !Number.isNaN(minAge) && ageValue < minAge) {
+    if (minAge !== null && ageValue < minAge) {
       return false;
     }
 
-    if (maxAge !== null && !Number.isNaN(maxAge) && ageValue > maxAge) {
+    if (maxAge !== null && ageValue > maxAge) {
       return false;
     }
 
@@ -426,7 +400,7 @@ function updateAgeFilterStatus(tableId) {
 
   const minText = state.minAge === "" ? "no min" : state.minAge;
   const maxText = state.maxAge === "" ? "no max" : state.maxAge;
-  const roundedText = state.useRoundedAge ? "rounded to nearest year" : "exact decimal age";
+  const roundedText = state.useRoundedAge ? "rounded to nearest year" : "exact decimals";
 
   if (state.minAge === "" && state.maxAge === "") {
     status.innerHTML = `
@@ -437,10 +411,19 @@ function updateAgeFilterStatus(tableId) {
     status.innerHTML = `
       Showing <strong>${visibleRows}</strong> of <strong>${totalRows}</strong> rows.
       Age filter on <strong>${escapeHtml(state.ageColumn)}</strong>:
-      <strong>${minText}</strong> to <strong>${maxText}</strong>,
+      <strong>${minText}</strong> to <strong>${maxText}</strong>
       using <strong>${roundedText}</strong>.
     `;
   }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 
@@ -448,21 +431,14 @@ function updateAgeFilterStatus(tableId) {
 // Excel loading
 // -------------------------
 
-async function loadExcel(tableId) {
-  const config = FILE_CONFIG[tableId];
-
-  if (!config) {
-    console.error(`No config found for ${tableId}`);
-    return;
-  }
-
+async function loadExcel(filename, tableId) {
   try {
-    console.log(`Loading ${config.filename}...`);
+    console.log(`Loading ${filename}...`);
 
-    const response = await fetch(config.filename);
+    const response = await fetch(filename);
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status} while loading ${config.filename}`);
+      throw new Error(`HTTP ${response.status} while loading ${filename}`);
     }
 
     const arrayBuffer = await response.arrayBuffer();
@@ -474,25 +450,34 @@ async function loadExcel(tableId) {
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
 
-    updateSheetLabels(tableId, sheetName);
-
     const jsonData = XLSX.utils.sheet_to_json(worksheet, {
       defval: ""
     });
 
     if (jsonData.length === 0) {
-      console.error(`No data found in ${config.filename}`);
+      console.error(`No data found in ${filename}`);
       return;
     }
 
-    rawData[config.rawKey] = jsonData;
+    // Save original data for visualisations.
+    if (tableId === "dataTable1") {
+      rawData.sheet1 = jsonData;
+    } else {
+      rawData.sheet2 = jsonData;
+    }
 
     createAgeFilterControls(tableId, jsonData);
 
     const columns = Object.keys(jsonData[0]).map(key => ({
       title: key,
       data: key,
-      render: function (data, type) {
+
+      // This controls how values appear in the table.
+      // Numeric values are rounded for display.
+      // Sorting remains numeric.
+      // If this is the selected age/AoA column and "Use rounded ages" is checked,
+      // the sort also uses nearest-year rounded values.
+      render: function (data, type, row) {
         if (isNumericValue(data)) {
           const num = parseNumber(data);
 
@@ -530,15 +515,7 @@ async function loadExcel(tableId) {
       table1 = $("#dataTable1").DataTable({
         data: jsonData,
         columns: columns,
-
-        // Performance improvements
-        deferRender: true,
-        processing: true,
-        searchDelay: 500,
-        autoWidth: false,
-
         pageLength: 25,
-        lengthMenu: [10, 25, 50, 100],
         scrollX: true,
         scrollY: "65vh",
         scrollCollapse: true,
@@ -551,10 +528,8 @@ async function loadExcel(tableId) {
 
       setupAgeFilterEvents("dataTable1");
 
-      console.log(`Loaded ${config.filename} into dataTable1`);
-    }
-
-    if (tableId === "dataTable2") {
+      console.log(`Loaded ${filename} into dataTable1`);
+    } else {
       if (table2) {
         table2.destroy();
         $("#dataTable2").empty();
@@ -563,15 +538,7 @@ async function loadExcel(tableId) {
       table2 = $("#dataTable2").DataTable({
         data: jsonData,
         columns: columns,
-
-        // Performance improvements
-        deferRender: true,
-        processing: true,
-        searchDelay: 500,
-        autoWidth: false,
-
         pageLength: 25,
-        lengthMenu: [10, 25, 50, 100],
         scrollX: true,
         scrollY: "65vh",
         scrollCollapse: true,
@@ -584,12 +551,12 @@ async function loadExcel(tableId) {
 
       setupAgeFilterEvents("dataTable2");
 
-      console.log(`Loaded ${config.filename} into dataTable2`);
+      console.log(`Loaded ${filename} into dataTable2`);
     }
 
   } catch (error) {
     console.error(error);
-    alert(`Error loading ${config.filename}: ${error.message}`);
+    alert(`Error loading ${filename}: ${error.message}`);
   }
 }
 
@@ -620,12 +587,12 @@ function openTab(tabIndex) {
 
   setTimeout(() => {
     if (tabIndex === 0 && table1) {
-      table1.columns.adjust();
+      table1.columns.adjust().draw(false);
       updateAgeFilterStatus("dataTable1");
     }
 
     if (tabIndex === 1 && table2) {
-      table2.columns.adjust();
+      table2.columns.adjust().draw(false);
       updateAgeFilterStatus("dataTable2");
     }
 
@@ -682,7 +649,6 @@ function updateVisualizationControls() {
     allColumns.find(c => c.toLowerCase().includes("phrase")) ||
     allColumns.find(c => c.toLowerCase().includes("expression")) ||
     allColumns.find(c => c.toLowerCase().includes("item")) ||
-    allColumns.find(c => c.toLowerCase().includes("word")) ||
     allColumns[0];
 
   setSelectOptions("xColumn", numericColumns, preferredAoA);
@@ -716,7 +682,9 @@ function makeHistogram(values, binCount = 20) {
     const start = min + i * binSize;
     const end = start + binSize;
 
-    labels.push(`${formatNumberForDisplay(start)}–${formatNumberForDisplay(end)}`);
+    labels.push(
+      `${formatNumberForDisplay(start)}–${formatNumberForDisplay(end)}`
+    );
   }
 
   values.forEach(value => {
@@ -748,6 +716,8 @@ function renderVisualization() {
   const labelColumnEl = document.getElementById("labelColumn");
   const chartCanvas = document.getElementById("vizChart");
 
+  // If the visualisation tab has not been added to index.html yet,
+  // this prevents errors.
   if (!vizSheet || !chartTypeEl || !xColumnEl || !yColumnEl || !labelColumnEl || !chartCanvas) {
     return;
   }
@@ -803,50 +773,23 @@ function renderVisualization() {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: false,
         plugins: {
           title: {
             display: true,
-            text: `Histogram of ${xColumn}`,
-            font: {
-              size: 18
-            }
-          },
-          legend: {
-            labels: {
-              font: {
-                size: 14
-              }
-            }
+            text: `Histogram of ${xColumn}`
           }
         },
         scales: {
           x: {
-            ticks: {
-              font: {
-                size: 12
-              }
-            },
             title: {
               display: true,
-              text: xColumn,
-              font: {
-                size: 15
-              }
+              text: xColumn
             }
           },
           y: {
-            ticks: {
-              font: {
-                size: 12
-              }
-            },
             title: {
               display: true,
-              text: "Count",
-              font: {
-                size: 15
-              }
+              text: "Count"
             }
           }
         }
@@ -862,12 +805,12 @@ function renderVisualization() {
       }))
       .filter(row => !Number.isNaN(row.value))
       .sort((a, b) => b.value - a.value)
-      .slice(0, 30);
+      .slice(0, 25);
 
     vizChart = new Chart(ctx, {
       type: "bar",
       data: {
-        labels: rows.map(row => String(row.label).slice(0, 60)),
+        labels: rows.map(row => String(row.label).slice(0, 40)),
         datasets: [{
           label: xColumn,
           data: rows.map(row => Number(row.value.toFixed(DECIMAL_PLACES))),
@@ -879,44 +822,18 @@ function renderVisualization() {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: false,
         indexAxis: "y",
         plugins: {
           title: {
             display: true,
-            text: `Top 30 values by ${xColumn}`,
-            font: {
-              size: 18
-            }
-          },
-          legend: {
-            labels: {
-              font: {
-                size: 14
-              }
-            }
+            text: `Top 25 values by ${xColumn}`
           }
         },
         scales: {
           x: {
-            ticks: {
-              font: {
-                size: 12
-              }
-            },
             title: {
               display: true,
-              text: xColumn,
-              font: {
-                size: 15
-              }
-            }
-          },
-          y: {
-            ticks: {
-              font: {
-                size: 12
-              }
+              text: xColumn
             }
           }
         }
@@ -932,7 +849,7 @@ function renderVisualization() {
       }))
       .filter(point => !Number.isNaN(point.x) && !Number.isNaN(point.y));
 
-    // Keep chart responsive by limiting plotted points.
+    // Limit scatterplots for browser performance.
     if (points.length > 3000) {
       points = points.sort(() => 0.5 - Math.random()).slice(0, 3000);
     }
@@ -954,50 +871,23 @@ function renderVisualization() {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: false,
         plugins: {
           title: {
             display: true,
-            text: `${yColumn} vs ${xColumn}`,
-            font: {
-              size: 18
-            }
-          },
-          legend: {
-            labels: {
-              font: {
-                size: 14
-              }
-            }
+            text: `${yColumn} vs ${xColumn}`
           }
         },
         scales: {
           x: {
-            ticks: {
-              font: {
-                size: 12
-              }
-            },
             title: {
               display: true,
-              text: xColumn,
-              font: {
-                size: 15
-              }
+              text: xColumn
             }
           },
           y: {
-            ticks: {
-              font: {
-                size: 12
-              }
-            },
             title: {
               display: true,
-              text: yColumn,
-              font: {
-                size: 15
-              }
+              text: yColumn
             }
           }
         }
@@ -1019,6 +909,7 @@ function setupVisualizationEvents() {
   const labelColumn = document.getElementById("labelColumn");
   const updateButton = document.getElementById("updatePlot");
 
+  // If visualisation controls do not exist yet, do nothing.
   if (!vizSheet || !chartType || !xColumn || !yColumn || !labelColumn) {
     return;
   }
@@ -1061,8 +952,8 @@ window.onload = async () => {
 
   registerAgeRangeFilter();
 
-  await loadExcel("dataTable1");
-  await loadExcel("dataTable2");
+  await loadExcel("sheet1.xlsx", "dataTable1");
+  await loadExcel("sheet2.xlsx", "dataTable2");
 
   setupVisualizationEvents();
   updateVisualizationControls();
